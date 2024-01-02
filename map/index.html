@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+	<title>Here's how much your neighbours are selling their flat for</title>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+	<!-- 
+THESE ARE CALLS TO DIFFERENT EXTERNAL FILES
+MAPBOX HAS A JAVASCRIPT LIBRARY THAT YOU NEED
+THE NEXT IS A CSS FILE FOR THE MAP
+AND THE FINAL ONE IS THE LIBRARY FOR JQUERY, WHICH I USE FOR THE PULLDOWN MENU.
+ -->
+
+	<script src='https://api.tiles.mapbox.com/mapbox-gl-js/v1.0.0/mapbox-gl.js'></script>
+	<script src='https://cdnjs.cloudflare.com/ajax/libs/Turf.js/5.1.5/turf.min.js'></script>
+	<link href='https://api.tiles.mapbox.com/mapbox-gl-js/v1.0.0/mapbox-gl.css' rel='stylesheet' />
+	<script src="https://code.jquery.com/jquery-2.1.1.min.js"></script>
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,300;0,400;0,500;0,700;1,300;1,400;1,500;1,700&display=swap" rel="stylesheet">
+	<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
+
+	<style>
+		::-webkit-scrollbar {
+			width: 0px;
+			/* remove scrollbar space */
+			background: transparent;
+			/* optional: just make scrollbar invisible */
+		}
+
+		body {
+			/* display: flex; */
+			/* flex-direction: column; */
+			font-family: 'Roboto', sans-serif;
+		}
+        
+        #headPlace {
+			position: absolute;
+			right: 0px;
+			top: 0px;
+			z-index: 10;
+
+            padding: 10px;
+            width: 200px;
+			background-color: #DDDDDD;
+
+		}
+
+		#map {
+			height: calc(75vh - 30px);	
+        }
+        
+		#articlePlace {
+			white-space: pre-wrap;
+		}
+
+	</style>
+
+</head>
+<!-- THE BODY OF THE HTML BEGINS HERE -->
+
+<body>
+
+
+ 	<div class="container">
+		<div class="text-center text-wrap p-4" id="top-headline">
+			<h2><b>Here's how much your neighbours are selling their flat for</b></h2>
+		</div>
+        <div class="row">
+            <p>Back in Singapore, a common topic of conversation amongst (across all ages) is housing.</p>
+            <p><em>"OMG did you hear how much the HDB in Pasir Ris went for?" </em></p>
+            <p>In fact, it's also become a common topic of reporting whenever flats are resold at an <a href="https://mothership.sg/2023/11/pinnacle-duxton-most-expensive-psf/" target="_blank">all</a> <a href="https://www.asiaone.com/money/new-hdb-resale-record-5-room-dbss-flat-toa-payoh-sold-156-million-the-peak" target="_blank">-time</a> <a href="https://mustsharenews.com/bishan-hdb-sold-million/" target="_blank">high.</a></p>
+            <p>Here's a "heat map" of HDB resale prices in Singapore:</p>
+        </div>
+		<div class="row align-items-center gap-2">
+			<div class="col-sm-8" id='map'></div>
+            <div class="card text-bg-light col-sm-3" style="height:50">
+                <div class="card-body">
+                    <div id="articlePlace">Click on a block to see details</div>
+                </div>
+            </div>
+		</div>
+        <div class="row text-wrap mt-5 mb-5">
+            <p>On hindsight, I should definitely have re-organised the data to show the prices by flat types. I also plan to show how expensive each town costs.</p>
+            <p>But for now...<b>how much is <em>your</em> flat going for?</b></p>
+        </div>
+	</div>
+
+
+	<script type="text/javascript" src="geo-data-updated.js"></script>
+	<script type="text/javascript">
+// these seven lines maybe the only lines you need to edit
+// you should put in your own access token
+// you can change the style of the tiles
+// as well as the center and the zoom
+
+// but note that way down below this is a method that auto centers and zooms:
+// map.fitBounds(turf.bbox(infoData), { padding: 120, linear: true })
+//If you want to control the centering and zoom yourself, comment out that line.
+		mapboxgl.accessToken = 'pk.eyJ1IjoiZGxhaXUiLCJhIjoiY2xwc3N1NnhkMDZjMTJ3bzYwcXZzMWkwaCJ9.Ai5HXizNLNm-1bdGg_lgGA';
+
+		var map = new mapboxgl.Map({
+			container: 'map', // HTML container ID
+			style: 'mapbox://styles/mapbox/light-v11', // style URL
+			center: [103.808052586332, 1.3516161224392], // starting position as [lng, lat]
+			zoom: 10
+		});
+		map.addControl(new mapboxgl.NavigationControl(), 'top-left');
+
+// all of this JavaScript manages what's displayed on hover and click
+		var popup = new mapboxgl.Popup({ closeButton: false, closeOnClick: false });
+
+		let hoverCurrentId = null
+		var datalayer;
+
+		function updateArticle(e) {
+			let feature = e.features[0]
+			document.getElementById("articlePlace").innerHTML = feature.properties.article
+		}
+		function updateHead(e) {
+			let feature = e.features[0]
+			map.getCanvas().style.cursor = 'pointer';
+			document.getElementById("headPlace").innerHTML = feature.properties.headline
+
+		}
+		function removeHead(e) {
+			document.getElementById("headPlace").innerHTML = "&nbsp;"
+			map.getCanvas().style.cursor = '';
+
+		}
+
+		function startHover(e) {
+			let feature = e.features[0]
+
+			if (hoverCurrentId) {
+				map.setFeatureState({ source: 'datalayer', id: hoverCurrentId }, { hover: false });
+			}
+			hoverCurrentId = feature.id
+			map.setFeatureState({ source: 'datalayer', id: hoverCurrentId }, { hover: true });
+		}
+
+		function stopHover(e) {
+			if (hoverCurrentId) {
+				map.setFeatureState({ source: 'datalayer', id: hoverCurrentId }, { hover: false });
+			}
+			hoverCurrentId = null;
+		}
+
+		function drawPopup(e) {
+			let feature = e.features[0]
+			map.getCanvas().style.cursor = 'pointer';
+
+			var coordinates = feature.geometry.coordinates.slice();
+			var headline = feature.properties.place;
+
+			while (Math.abs(e.lngLat.lng - coordinates[0]) > 180) {
+				coordinates[0] += e.lngLat.lng > coordinates[0] ? 360 : -360;
+			}
+
+			popup.setLngLat(coordinates)
+				.setHTML(`<b>${headline}</b>`)
+				.addTo(map);
+		}
+
+		function removePopup(e) {
+			map.getCanvas().style.cursor = '';
+			popup.remove();
+		}
+
+		map.on('load', function () {
+			for (let i = 0; i < infoData.features.length; i++) {
+				infoData.features[i]['id'] = i + 1
+			}
+
+			console.log("it's loading the points")
+// the JavaScript below sets up the styles of the colors based on your properties
+// color, radius, and rating
+
+// Soma's explanation of 'paint': https://gist.github.com/jsoma/c91cfa7a1f4f8346d95ac2a907f0cb0c
+
+			datalayer = map.addLayer({
+				id: "datalayer",
+				type: "circle",
+				source: {
+					type: "geojson",
+					data: infoData,
+				},
+				paint: {
+					// 'circle-radius': ['to-number', ['get', 'radius']],
+                    'circle-radius': 2.5,
+					// 'circle-stroke-color': '#ff5252',
+					'circle-stroke-width': 0,
+                    'circle-color': [
+                        'match',
+                        ["get", "price_rank"],
+                        1,
+                        '#ee243a',
+                        2,
+                        '#ff7079',
+                        3,
+                        '#ffa6aa',
+                        4,
+                        '#fed4d6',
+                        /* other */ '#ccc'
+                        ],
+					'circle-opacity': [
+						'case',
+						['boolean', ['feature-state', 'hover'], false],
+						1,
+						0.5
+					]
+				}
+			});
+// these functions control Mouse actions
+// they make the pop-up headline or update the article text
+			// When we move the mouse over, draw the popup and change the hover style
+			map.on('mouseenter', 'datalayer', function (e) {
+				startHover(e)
+// uncomment this line to get pop-ups
+				drawPopup(e)
+				updateHead(e)
+			});
+
+			// When we move the mouse away from a point, turn off the hovering and popup
+			map.on('mouseleave', 'datalayer', function (e) {
+				stopHover(e)
+// uncomment this line to get pop-ups
+				removePopup(e)
+				removeHead(e)
+			});
+
+			// When we click, update the article (the right-hand side)
+			map.on('click', 'datalayer', function (e) {
+				updateArticle(e)
+			})
+
+// very important!! this automatically centers the map and zooms it
+
+			map.fitBounds(turf.bbox(infoData), { padding: 120, linear: true })
+		})
+
+
+	</script>
+</body>
+
+</html>
